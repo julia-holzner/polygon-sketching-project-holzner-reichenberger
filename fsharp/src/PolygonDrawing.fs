@@ -62,8 +62,30 @@ For FinishPolygon mesages:
  - if there is no current polygon (this means right click was used before even adding a single vertex), ignore the message
  - if there is a current polygon, reset the current polygon to None and add the current polygon as a new elemnet to finishedPolygons.
 *)
-let updateModel (msg : Msg) (model : Model) =
-    model
+(* Core logic without undo/redo. *)
+let updateModel (msg : Msg) (model : Model) : Model =
+    match msg with
+    | AddPoint p ->
+        // Punkt zum aktuellen Polygon hinzuf�gen (oder neues Polygon starten)
+        let newCurrent =
+            match model.currentPolygon with
+            | None -> [ p ]
+            | Some poly -> p :: poly
+        { model with currentPolygon = Some newCurrent }
+
+    | FinishPolygon ->
+        match model.currentPolygon with
+        | None ->
+            // nichts zu tun
+            model
+        | Some poly ->
+            { model with
+                currentPolygon = None
+                finishedPolygons = poly :: model.finishedPolygons }
+
+    // Undo/Redo werden nicht hier behandelt
+    | Undo | Redo | SetCursorPos _ ->
+        model
 
 // wraps an update function with undo/redo.
 let addUndoRedo (updateFunction : Msg -> Model -> Model) (msg : Msg) (model : Model) =
@@ -74,16 +96,29 @@ let addUndoRedo (updateFunction : Msg -> Model -> Model) (msg : Msg) (model : Mo
         // update the mouse position and create a new model.
         { model with mousePos = p }
     | Undo -> 
-        // TODO implement undo logics, HINT: restore the model stored in past, and replace the current
-        // state with it.
-        model
+        match model.past with
+        | None ->
+            { model with mousePos = None }
+        | Some previous ->
+            let currentWithoutPreview = { model with mousePos = None }
+            { previous with
+                mousePos = None
+                future = Some currentWithoutPreview }
+
     | Redo -> 
-        // TODO: same as undo
-        model
+        match model.future with
+        | None ->
+            { model with mousePos = None }
+        | Some next ->
+            let currentWithoutPreview = { model with mousePos = None }
+            { next with
+                mousePos = None
+                past = Some currentWithoutPreview }
+
     | _ -> 
         // use the provided update function for all remaining messages
-        { updateFunction msg model with past = Some model }
-
+        let updated = updateFunction msg model
+        { updated with past = Some model; future = None }
 
 let update (msg : Msg) (model : Model)  =
     let newModel = addUndoRedo updateModel msg model
