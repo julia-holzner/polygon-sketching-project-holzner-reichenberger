@@ -1,0 +1,106 @@
+﻿@page "/polygon-drawing"
+@rendermode InteractiveServer
+
+@using BlazorApp1.Domain
+@inject PolygonDrawingState State
+@using Microsoft.AspNetCore.Components.Web
+
+<h3>Polygon Drawing</h3>
+
+<div style="user-select: none;">
+    <button style="margin: 20px;" @onclick="OnUndo">Undo</button>
+    <button style="margin: 20px;" @onclick="OnRedo">Redo</button>
+
+    <br />
+
+    <svg width="500" height="500"
+         @onmousemove="OnMouseMove"
+         @onclick="OnClick"
+         style="border: 2px solid black;">
+        <!-- Rahmen wie im F#-Code -->
+        <rect x="0" y="0" width="500" height="500"
+              fill="none" stroke="black" stroke-width="2" />
+
+        @* Fertige Polygone (grün) *@
+        @foreach (var segment in GetSegments(State.FinishedPolygons))
+        {
+            <line x1="@segment.Item1.X"
+                  y1="@segment.Item1.Y"
+                  x2="@segment.Item2.X"
+                  y2="@segment.Item2.Y"
+                  stroke="green"
+                  stroke-width="2"
+                  stroke-linejoin="round" />
+        }
+
+        @* Aktuelles Polygon inkl. Vorschau (rot) *@
+        @foreach (var segment in GetCurrentSegments())
+        {
+            <line x1="@segment.Item1.X"
+                  y1="@segment.Item1.Y"
+                  x2="@segment.Item2.X"
+                  y2="@segment.Item2.Y"
+                  stroke="red"
+                  stroke-width="2"
+                  stroke-linejoin="round" />
+        }
+    </svg>
+</div>
+
+@code
+{
+    private void OnUndo() => State.Undo();
+    private void OnRedo() => State.Redo();
+
+    private void OnMouseMove(MouseEventArgs e)
+    {
+        State.SetCursorPos(new Coord(e.OffsetX, e.OffsetY));
+    }
+
+    private void OnClick(MouseEventArgs e)
+    {
+        if (e.Detail == 1)
+        {
+            State.AddPoint(new Coord(e.OffsetX, e.OffsetY));
+        }
+        else if (e.Detail == 2)
+        {
+            State.FinishPolygon();
+        }
+    }
+
+    private IEnumerable<(Coord, Coord)> GetSegments(IEnumerable<List<Coord>> polygons)
+    {
+        foreach (var poly in polygons)
+        {
+            if (poly.Count < 2)
+                continue;
+
+            for (int i = 0; i < poly.Count - 1; i++)
+            {
+                yield return (poly[i], poly[i + 1]);
+            }
+        }
+    }
+
+    private IEnumerable<(Coord, Coord)> GetCurrentSegments()
+    {
+        var current = State.CurrentPolygon;
+        if (current == null || current.Count == 0)
+            yield break;
+
+        var points = new List<Coord>(current);
+        if (State.MousePos is Coord preview)
+        {
+            points.Add(preview);
+        }
+
+        if (points.Count < 2)
+            yield break;
+
+        for (int i = 0; i < points.Count - 1; i++)
+        {
+            yield return (points[i], points[i + 1]);
+        }
+    }
+}
