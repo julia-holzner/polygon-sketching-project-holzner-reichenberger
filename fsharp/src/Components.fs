@@ -5,13 +5,6 @@ open Feliz.Router
 
 type Components =
     /// <summary>
-    /// The simplest possible React component.
-    /// Shows a header with the text Hello World
-    /// </summary>
-    [<ReactComponent>]
-    static member HelloWorld() = Html.h1 "Hello World"
-
-    /// <summary>
     /// A stateful React component that maintains a counter
     /// </summary>
     [<ReactComponent>]
@@ -37,8 +30,6 @@ type Components =
             router.children [
                 match currentUrl with
                 | [ ] -> Html.h1 "Index"
-                | [ "hello" ] -> Components.HelloWorld()
-                | [ "counter" ] -> Components.Counter()
                 | otherwise -> Html.h1 "Not found"
             ]
         ]

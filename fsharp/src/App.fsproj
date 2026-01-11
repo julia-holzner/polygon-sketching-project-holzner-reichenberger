@@ -6,9 +6,7 @@
         <None Include="index.html" />
         <Compile Include="Extensions.fs" />
         <Compile Include="Components.fs" />
-        <Compile Include="Canvas.fs" />
         <Compile Include="PolygonDrawing.fs" />
-        <Compile Include="Counter.fs" />
         <Compile Include="Main.fs" />
     </ItemGroup>
     <ItemGroup>
