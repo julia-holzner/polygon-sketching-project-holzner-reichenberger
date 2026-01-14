@@ -8,7 +8,9 @@
 <h3>Polygon Drawing</h3>
 
 <div style="user-select: none;">
+    <!-- undo button -->
     <button style="margin: 20px;" @onclick="OnUndo">Undo</button>
+    <!-- redo button -->
     <button style="margin: 20px;" @onclick="OnRedo">Redo</button>
 
     <br />
@@ -17,11 +19,10 @@
          @onmousemove="OnMouseMove"
          @onclick="OnClick"
          style="border: 2px solid black;">
-        <!-- Rahmen -->
-        <rect x="0" y="0" width="500" height="500"
-              fill="none" stroke="black" stroke-width="2" />
+        <!-- boarder -->
+        <rect x="0" y="0" width="500" height="500" fill="none" stroke="black" stroke-width="2" />
 
-        @* Fertige Polygone (grün) *@
+        @* finished polygons (green) *@
         @foreach (var segment in GetSegments(State.FinishedPolygons))
         {
             <line x1="@segment.Item1.X"
@@ -33,7 +34,7 @@
                   stroke-linejoin="round" />
         }
 
-        @* Aktuelles Polygon inkl. Vorschau (rot) *@
+        @* currently drawn polygon (red) *@
         @foreach (var segment in GetCurrentSegments())
         {
             <line x1="@segment.Item1.X"
@@ -49,65 +50,80 @@
 
 @code
 {
-    // UI-spezifischer State (nicht Teil der Domain)
     private Coord? _mousePos;
 
+    // gets called when undo button is pressed -> calls undo in State
     private void OnUndo()
     {
-        _mousePos = null;       // UI-Logik
-        State.Undo();           // Domain-Logik
+        _mousePos = null;
+        State.Undo();
     }
 
+    // gets called when redo button is pressed -> calls redo in State
     private void OnRedo()
     {
-        _mousePos = null;       // UI-Logik
-        State.Redo();           // Domain-Logik
+        _mousePos = null;
+        State.Redo();
     }
 
+    // gets called when Mouse is Moved, sets new coordinates
     private void OnMouseMove(MouseEventArgs e)
     {
         _mousePos = new Coord(e.OffsetX, e.OffsetY);
     }
 
+    // gets called when click happend on drawing board
     private void OnClick(MouseEventArgs e)
     {
         if (e.Detail == 1)
         {
-            // einfacher Klick → Punkt hinzufügen
+            // single click adds a basic point -> calls AddPoint in State
             State.AddPoint(new Coord(e.OffsetX, e.OffsetY));
         }
         else if (e.Detail == 2)
         {
-            // Doppelklick → Polygon abschließen
+            // double click finishes polygon -> calls FinishPolygon on State
             State.FinishPolygon();
         }
-
-        // Optional: Mausposition nach Klick zurücksetzen
-        // _mousePos = null;
     }
 
+    // divdes polygons into segements to draw lines between them
+    // uses yield for better performance -> returns each segement after creating
+    private static IEnumerable<(Coord, Coord)> DividePolygonIntoSegments(
+        IReadOnlyList<Coord> poly)
+    {
+        // need at least 2 for a line
+        if (poly is null || poly.Count < 2)
+            yield break;
+
+        for (int i = 0; i < poly.Count - 1; i++)
+        {
+            yield return (poly[i], poly[i + 1]);
+        }
+    }
+
+    // devides all polygons in segments in a list (this usecase the finishedpolygons from state)
     private IEnumerable<(Coord, Coord)> GetSegments(
         IEnumerable<IReadOnlyList<Coord>> polygons)
     {
         foreach (var poly in polygons)
         {
-            if (poly.Count < 2)
-                continue;
-
-            for (int i = 0; i < poly.Count - 1; i++)
+            // returns each statement when done
+            foreach (var segment in DividePolygonIntoSegments(poly))
             {
-                yield return (poly[i], poly[i + 1]);
+                yield return segment;
             }
         }
     }
 
+    // devides current polygon into segements for drawing
     private IEnumerable<(Coord, Coord)> GetCurrentSegments()
     {
         var current = State.CurrentPolygon;
         if (current is null || current.Count == 0)
             yield break;
 
-        // Kopie für die Vorschau-Linie
+        // add MousPos for preview line
         var points = current.ToList();
 
         if (_mousePos is Coord preview)
@@ -115,12 +131,12 @@
             points.Add(preview);
         }
 
-        if (points.Count < 2)
-            yield break;
-
-        for (int i = 0; i < points.Count - 1; i++)
+        // get segements and return them as soon as done
+        foreach (var segment in DividePolygonIntoSegments(points))
         {
-            yield return (points[i], points[i + 1]);
+            yield return segment;
         }
     }
+}
+
 }

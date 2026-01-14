@@ -3,12 +3,12 @@ using System.Linq;
 
 namespace BlazorApp1.Domain
 {
-    // Kleiner Value-Type für Koordinaten
+    // datatype for coordinates
     public readonly record struct Coord(double X, double Y);
 
     /// <summary>
-    /// Reiner Domain-State: fertige und aktuelles Polygon
-    /// inkl. Undo/Redo. Keine UI-Details (wie MousePos).
+    /// polygon state for ui, handels undo, redo, addpoint and finishpolygon
+    /// provides finishedPolygons and currentpolygon
     /// </summary>
     public sealed class PolygonDrawingState
     {
@@ -19,79 +19,76 @@ namespace BlazorApp1.Domain
         private readonly Stack<PolygonSnapshot> _future = new();
 
         /// <summary>
-        /// Fertig abgeschlossene Polygone (nur lesbar nach außen).
+        /// all finished polygons, api for ui 
         /// </summary>
         public IReadOnlyList<IReadOnlyList<Coord>> FinishedPolygons => _finishedPolygons;
 
         /// <summary>
-        /// Aktuelles, noch nicht abgeschlossenes Polygon (nur lesbar).
+        /// currently drawing polygon, api for ui
         /// </summary>
         public IReadOnlyList<Coord>? CurrentPolygon => _currentPolygon;
 
         /// <summary>
-        /// Fügt einen Punkt zum aktuellen Polygon hinzu
-        /// und legt einen Undo-Snapshot an.
+        /// logic for adding a point to current polygon (for when a single click happens)
         /// </summary>
         public void AddPoint(Coord coord)
         {
             SaveForUndo();
 
-            _currentPolygon ??= new List<Coord>();
-            _currentPolygon.Add(coord);
+            _currentPolygon ??= new List<Coord>(); // init if currentPolygon in empty
+            _currentPolygon.Add(coord); // add coordinates to currentpolygon
         }
 
         /// <summary>
-        /// Schließt das aktuelle Polygon ab (falls vorhanden)
-        /// und verschiebt es in die Liste der fertigen Polygone.
+        /// logic for finishing a polygon (when a double click happens)
         /// </summary>
         public void FinishPolygon()
         {
             if (_currentPolygon is null || _currentPolygon.Count == 0)
             {
-                return;
+                return; // current polygon need to exist and have at least one point to finish
             }
 
             SaveForUndo();
 
-            // Kopie erzeugen, damit spätere Änderungen
-            // die gespeicherten Polygone nicht verändern.
+            // add new polygon to finished polygons and reset current polygon
             _finishedPolygons.Insert(0, new List<Coord>(_currentPolygon));
             _currentPolygon = null;
         }
 
         /// <summary>
-        /// Macht den letzten Zustand rückgängig.
+        /// goes back one step -> called when undo button is pressed
         /// </summary>
         public void Undo()
         {
             if (_past.Count == 0)
             {
+                // checks if past exists
                 return;
             }
 
-            _future.Push(CreateSnapshot());
-            var previous = _past.Pop();
+            _future.Push(CreateSnapshot()); // pushes current state as snapshot on future for redo
+            var previous = _past.Pop(); // get latest past and renders it
             RestoreSnapshot(previous);
         }
 
         /// <summary>
-        /// Stellt einen rückgängig gemachten Zustand wieder her.
+        /// goes one step further in the "future" -> called when redo button is pressed
         /// </summary>
         public void Redo()
         {
             if (_future.Count == 0)
             {
-                return;
+                return; // checks if furture exists
             }
 
-            _past.Push(CreateSnapshot());
-            var next = _future.Pop();
+            _past.Push(CreateSnapshot()); // pushes current state as snapshot on past for undo
+            var next = _future.Pop(); // gets and renders latest furture snapshot
             RestoreSnapshot(next);
         }
 
         /// <summary>
-        /// Löscht alle Polygone und den aktuellen Zustand.
-        /// Optional, aber oft praktisch.
+        /// clears current values of state
         /// </summary>
         public void Clear()
         {
@@ -105,11 +102,8 @@ namespace BlazorApp1.Domain
             _currentPolygon = null;
         }
 
-        // ===================== intern: Snapshot-Logik =====================
-
         /// <summary>
-        /// Interner Snapshot-Typ (Memento), nicht von außen sichtbar.
-        /// Enthält tiefe Kopien der Listen.
+        /// internal neasted Snapshot class, holds a state at a specific time 
         /// </summary>
         private sealed class PolygonSnapshot
         {
@@ -125,14 +119,13 @@ namespace BlazorApp1.Domain
             }
         }
 
+        // creates a snapshot of the current state
         private PolygonSnapshot CreateSnapshot()
         {
-            // tiefe Kopie der fertigen Polygone
             var finishedCopy = _finishedPolygons
                 .Select(poly => (IReadOnlyList<Coord>)poly.ToList())
                 .ToList();
 
-            // Kopie des aktuellen Polygons (falls vorhanden)
             IReadOnlyList<Coord>? currentCopy = _currentPolygon is null
                 ? null
                 : _currentPolygon.ToList();
@@ -140,24 +133,22 @@ namespace BlazorApp1.Domain
             return new PolygonSnapshot(finishedCopy, currentCopy);
         }
 
+        // loads state from snapshot into current
         private void RestoreSnapshot(PolygonSnapshot snapshot)
         {
             _finishedPolygons.Clear();
 
             foreach (var poly in snapshot.FinishedPolygons)
             {
-                // Jede Liste wieder in eine neue, veränderbare Liste kopieren
                 _finishedPolygons.Add(poly.ToList());
             }
 
             _currentPolygon = snapshot.CurrentPolygon is null
                 ? null
                 : snapshot.CurrentPolygon.ToList();
-
-            // _future wird bewusst nicht angefasst:
-            // Undo/Redo-Logik regelt das auf höherer Ebene.
         }
 
+        // save current state whenever addpoint, finishedpolygons or clear change state -> for undo
         private void SaveForUndo()
         {
             _past.Push(CreateSnapshot());
