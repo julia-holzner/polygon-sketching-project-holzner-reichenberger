@@ -2,8 +2,8 @@
 @rendermode InteractiveServer
 
 @using BlazorApp1.Domain
-@inject PolygonDrawingState State
 @using Microsoft.AspNetCore.Components.Web
+@inject PolygonDrawingState State
 
 <h3>Polygon Drawing</h3>
 
@@ -17,7 +17,7 @@
          @onmousemove="OnMouseMove"
          @onclick="OnClick"
          style="border: 2px solid black;">
-        <!-- Rahmen wie im F#-Code -->
+        <!-- Rahmen -->
         <rect x="0" y="0" width="500" height="500"
               fill="none" stroke="black" stroke-width="2" />
 
@@ -49,27 +49,45 @@
 
 @code
 {
-    private void OnUndo() => State.Undo();
-    private void OnRedo() => State.Redo();
+    // UI-spezifischer State (nicht Teil der Domain)
+    private Coord? _mousePos;
+
+    private void OnUndo()
+    {
+        _mousePos = null;       // UI-Logik
+        State.Undo();           // Domain-Logik
+    }
+
+    private void OnRedo()
+    {
+        _mousePos = null;       // UI-Logik
+        State.Redo();           // Domain-Logik
+    }
 
     private void OnMouseMove(MouseEventArgs e)
     {
-        State.SetCursorPos(new Coord(e.OffsetX, e.OffsetY));
+        _mousePos = new Coord(e.OffsetX, e.OffsetY);
     }
 
     private void OnClick(MouseEventArgs e)
     {
         if (e.Detail == 1)
         {
+            // einfacher Klick → Punkt hinzufügen
             State.AddPoint(new Coord(e.OffsetX, e.OffsetY));
         }
         else if (e.Detail == 2)
         {
+            // Doppelklick → Polygon abschließen
             State.FinishPolygon();
         }
+
+        // Optional: Mausposition nach Klick zurücksetzen
+        // _mousePos = null;
     }
 
-    private IEnumerable<(Coord, Coord)> GetSegments(IEnumerable<List<Coord>> polygons)
+    private IEnumerable<(Coord, Coord)> GetSegments(
+        IEnumerable<IReadOnlyList<Coord>> polygons)
     {
         foreach (var poly in polygons)
         {
@@ -86,11 +104,13 @@
     private IEnumerable<(Coord, Coord)> GetCurrentSegments()
     {
         var current = State.CurrentPolygon;
-        if (current == null || current.Count == 0)
+        if (current is null || current.Count == 0)
             yield break;
 
-        var points = new List<Coord>(current);
-        if (State.MousePos is Coord preview)
+        // Kopie für die Vorschau-Linie
+        var points = current.ToList();
+
+        if (_mousePos is Coord preview)
         {
             points.Add(preview);
         }
