@@ -63,62 +63,115 @@ For FinishPolygon mesages:
  - if there is a current polygon, reset the current polygon to None and add the current polygon as a new elemnet to finishedPolygons.
 *)
 (* Core logic without undo/redo. *)
+// The function is pure:
+    // - It takes a message + the current model
+    // - It returns a NEW model (immutability), the old one stays unchanged
 let updateModel (msg : Msg) (model : Model) : Model =
     match msg with
     | AddPoint p ->
-        // Punkt zum aktuellen Polygon hinzuf�gen (oder neues Polygon starten)
+        
         let newCurrent =
             match model.currentPolygon with
+            
+            // If no polygon is active, start one with [p].
             | None -> [ p ]
+            
+            // If a polygon is active, add the point to the front (O(1) with lists and apparently this is often done like this with lists in F#).
             | Some poly -> p :: poly
+
+        // Store the updated polygon as the current one.
         { model with currentPolygon = Some newCurrent }
 
     | FinishPolygon ->
         match model.currentPolygon with
         | None ->
-            // nichts zu tun
+            // Nothing to finish if no polygon is active.
             model
         | Some poly ->
+            // Current polygon is being moved to finished list, then clear currentPolygon.
             { model with
                 currentPolygon = None
                 finishedPolygons = poly :: model.finishedPolygons }
 
-    // Undo/Redo werden nicht hier behandelt
     | Undo | Redo | SetCursorPos _ ->
+        // Not handled here: undo/redo are handled in addUndoRedo.
         model
 
-// wraps an update function with undo/redo.
-let addUndoRedo (updateFunction : Msg -> Model -> Model) (msg : Msg) (model : Model) =
-    // first let us, handle the cursor position, which is not undoable, and handle undo/redo messages
-    // in a next step we actually run the "core" system logics.
-    match msg with
-    | SetCursorPos p -> 
-        // update the mouse position and create a new model.
-        { model with mousePos = p }
-    | Undo -> 
-        match model.past with
-        | None ->
-            { model with mousePos = None }
-        | Some previous ->
-            let currentWithoutPreview = { model with mousePos = None }
-            { previous with
-                mousePos = None
-                future = Some currentWithoutPreview }
 
-    | Redo -> 
-        match model.future with
+let addUndoRedo (updateFunction : Msg -> Model -> Model) (msg : Msg) (model : Model) =
+   
+    match msg with
+    
+    // Mousemovement / Cursor-Preview
+    | SetCursorPos p ->
+        // SetCursorPos appears very often on namely on eack mouse move, so it is not written in the Undo-History
+        // Only mousePos is being changed and past/future stays the same
+        { model with mousePos = p }
+
+    | Undo ->
+        
+        // - past = None     => there is no past state, so we cant go back
+        // - past = Some ... => there is the previous state and we can go back
+        match model.past with
+
         | None ->
+            //the preview is being deleted (mousePos = None) so no preview line stays on the canvas.
             { model with mousePos = None }
-        | Some next ->
-            let currentWithoutPreview = { model with mousePos = None }
-            { next with
+
+        | Some previous ->
+            //Previous is the state before the current state
+            //When undoing, the current state should not be lost for a later redo, so the current state is stored in "future" of the previous state
+           
+            let currentWithoutPreview =
+                //This is the current state (model), but without cursor preview.
+                // This state will be restored later using Redo.
+                { model with mousePos = None }
+                
+            { previous with
+              //Delete preview (even in the jumped-back state)
                 mousePos = None
+              //The current state is appended
+                future = Some currentWithoutPreview }
+            
+            // Previous already contains its own previous.past, etc., this allows to press Undo multiple times (chain backwards).
+
+
+    | Redo ->
+        // - future = None     => nothing to restore
+        // - future = Some     => there is a next state
+        match model.future with
+
+        | None ->
+            
+            //the preview is being deleted
+            { model with mousePos = None }
+
+        | Some next ->
+            // next is the state being restored with Redo.
+            // the current state should not be lost,
+            // because after a Redo, Undo should be possible again.
+            // So the current state is saved as past in the next state.
+            let currentWithoutPreview =
+                // Save current state without preview
+                { model with mousePos = None }
+
+          
+            // IMPORTANT: If there have been previously performed multiple undos, then model.future often contains a chain (e.g. next.future = Some ...) which also allows multiple redos to work.
+            { next with
+              //Remove Preview in next
+                mousePos = None
+              //Append the current state as a possible "undo" to next
                 past = Some currentWithoutPreview }
 
-    | _ -> 
-        // use the provided update function for all remaining messages
-        let updated = updateFunction msg model
-        { updated with past = Some model; future = None }
+
+    | _ ->
+    // All “normal” actions (e.g. AddPoint, FinishPolygon) end up here.
+    // Apply the core update logic to get the new state.
+    let updated = updateFunction msg model
+
+    //Save the current state for Undo, and clear Redo history, after a new action,  typically there can't be a redoing of older steps
+    { updated with past = Some model; future = None }
+
 
 let update (msg : Msg) (model : Model)  =
     let newModel = addUndoRedo updateModel msg model
