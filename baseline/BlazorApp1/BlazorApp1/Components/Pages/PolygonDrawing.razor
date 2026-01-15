@@ -1,0 +1,142 @@
+﻿@page "/"
+@rendermode InteractiveServer
+
+@using BlazorApp1.Domain
+@using Microsoft.AspNetCore.Components.Web
+@inject PolygonDrawingState State
+
+<h3>Polygon Drawing</h3>
+
+<div style="user-select: none;">
+    <!-- undo button -->
+    <button style="margin: 20px;" @onclick="OnUndo">Undo</button>
+    <!-- redo button -->
+    <button style="margin: 20px;" @onclick="OnRedo">Redo</button>
+
+    <br />
+
+    <svg width="500" height="500"
+         @onmousemove="OnMouseMove"
+         @onclick="OnClick"
+         style="border: 2px solid black;">
+        <!-- boarder -->
+        <rect x="0" y="0" width="500" height="500" fill="none" stroke="black" stroke-width="2" />
+
+        @* finished polygons (green) *@
+        @foreach (var segment in GetSegments(State.FinishedPolygons))
+        {
+            <line x1="@segment.Item1.X"
+                  y1="@segment.Item1.Y"
+                  x2="@segment.Item2.X"
+                  y2="@segment.Item2.Y"
+                  stroke="green"
+                  stroke-width="2"
+                  stroke-linejoin="round" />
+        }
+
+        @* currently drawn polygon (red) *@
+        @foreach (var segment in GetCurrentSegments())
+        {
+            <line x1="@segment.Item1.X"
+                  y1="@segment.Item1.Y"
+                  x2="@segment.Item2.X"
+                  y2="@segment.Item2.Y"
+                  stroke="red"
+                  stroke-width="2"
+                  stroke-linejoin="round" />
+        }
+    </svg>
+</div>
+
+@code
+{
+    private Coord? _mousePos;
+
+    // gets called when undo button is pressed -> calls undo in State
+    private void OnUndo()
+    {
+        _mousePos = null;
+        State.Undo();
+    }
+
+    // gets called when redo button is pressed -> calls redo in State
+    private void OnRedo()
+    {
+        _mousePos = null;
+        State.Redo();
+    }
+
+    // gets called when Mouse is Moved, sets new coordinates
+    private void OnMouseMove(MouseEventArgs e)
+    {
+        _mousePos = new Coord(e.OffsetX, e.OffsetY);
+    }
+
+    // gets called when click happend on drawing board
+    private void OnClick(MouseEventArgs e)
+    {
+        if (e.Detail == 1)
+        {
+            // single click adds a basic point -> calls AddPoint in State
+            State.AddPoint(new Coord(e.OffsetX, e.OffsetY));
+        }
+        else if (e.Detail == 2)
+        {
+            // double click finishes polygon -> calls FinishPolygon on State
+            State.FinishPolygon();
+        }
+    }
+
+    // divdes polygons into segements to draw lines between them
+    // uses yield for better performance -> returns each segement after creating
+    private static IEnumerable<(Coord, Coord)> DividePolygonIntoSegments(
+        IReadOnlyList<Coord> poly)
+    {
+        // need at least 2 for a line
+        if (poly is null || poly.Count < 2)
+            yield break;
+
+        for (int i = 0; i < poly.Count - 1; i++)
+        {
+            yield return (poly[i], poly[i + 1]);
+        }
+    }
+
+    // devides all polygons in segments in a list (this usecase the finishedpolygons from state)
+    private IEnumerable<(Coord, Coord)> GetSegments(
+        IEnumerable<IReadOnlyList<Coord>> polygons)
+    {
+        foreach (var poly in polygons)
+        {
+            // returns each statement when done
+            foreach (var segment in DividePolygonIntoSegments(poly))
+            {
+                yield return segment;
+            }
+        }
+    }
+
+    // devides current polygon into segements for drawing
+    private IEnumerable<(Coord, Coord)> GetCurrentSegments()
+    {
+        var current = State.CurrentPolygon;
+        if (current is null || current.Count == 0)
+            yield break;
+
+        // add MousPos for preview line
+        var points = current.ToList();
+
+        if (_mousePos is Coord preview)
+        {
+            points.Add(preview);
+        }
+
+        // get segements and return them as soon as done
+        foreach (var segment in DividePolygonIntoSegments(points))
+        {
+            yield return segment;
+        }
+    }
+}
+
+}
